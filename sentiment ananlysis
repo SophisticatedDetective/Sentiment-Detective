@@ -1,0 +1,60 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+cat=pd.read_csv('/home/kesci/input/nline_shopping8056/online_shopping_10_cats.csv')
+!pip install zhon
+cat=cat[:1000]
+import re 
+from zhon.hanzi import punctuation
+def hanzi_symbol_remove(line):
+    return re.sub("[{}]+".format(punctuation), "", line)
+#cat['new_review']=[map(hanzi_symbol_remove,cat['review'][i]) for i in list(range(cat.shape[0]))]
+cat['new_review']=0
+#移除中文标点符号
+for i in range(cat.shape[0]):
+    cat['new_review'][i]=hanzi_symbol_remove(cat['review'][i])
+#移除英文标点符号
+import string
+def remove_eng_symbol(x):
+    return x.translate(str.maketrans(' ',' ',string.punctuation))
+for i in range(cat.shape[0]):
+    cat['new_review'][i]=remove_eng_symbol(cat['new_review'][i])
+#移除数字等特殊字符
+from string import digits
+cat['new_review']=cat['new_review'].astype('str')
+def digit_remover(x):
+    return x.encode("utf-8").translate(None, digits)
+#for i in range(cat.shape[0]):
+    #cat['new_review'][i]=digit_remover(cat['new_review'][i])
+stopwords=pd.read_csv(r'/home/kesci/work/stop_words.csv',encoding='gbk')
+import jieba
+def sep_sentence(x):
+    line=jieba.cut(x)
+    line=[w for w in line if w not in stopwords]
+    return line
+for i in range(cat.shape[0]):
+    cat['new_review'][i]=sep_sentence(cat['new_review'][i])
+from sklearn.feature_extraction.text import TfidfVectorizer
+cat['new_review']=cat['new_review'].astype(str)
+tf=TfidfVectorizer()
+tfidf_matrix=tf.fit_transform(cat['new_review'])
+tfidfm=tfidf_matrix.todense()
+data_feature=pd.DataFrame(np.array(tfidfm),columns=list(range(tfidfm.shape[1])))
+data_feature['label']=cat['label']
+from sklearn.model_selection import train_test_split
+xtrain,xtest,ytrain,ytest=train_test_split(data_feature[data_feature.columns[:-1]],data_feature['label'],test_size=0.3,random_state=0)
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import GridSearchCV
+rfmodel=RandomForestClassifier()
+gs=GridSearchCV(rfmodel,param_grid={'n_estimators':range(5,30,5)},cv=10,n_jobs=-1)
+gsmodel=gs.fit(xtrain,ytrain)
+print(gsmodel.best_score_,gsmodel.best_params_)
+means=gsmodel.cv_results_['mean_test_score']
+params=gsmodel.cv_results_['params']
+for m,p in zip(means,params):
+    print((m,p))
+rf2=RandomForestClassifier(n_estimators=5).fit(xtrain,ytrain)
+y_pred=rf2.predict(xtest)
+from sklearn.metrics import classification_report
+print(classification_report(ytest,y_pred))
+
